@@ -1,0 +1,10 @@
+{
+  "name": "com.niuma.save",
+  "version": "0.1.0",
+  "displayName": "Niuma Save",
+  "description": "NiumaSave provides save data structures and provider protocols for modular game persistence.",
+  "unity": "2021.3",
+  "author": {
+    "name": "Niuma Team"
+  }
+}

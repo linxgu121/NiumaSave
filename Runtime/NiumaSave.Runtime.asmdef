@@ -1,0 +1,14 @@
+{
+  "name": "NiumaSave.Runtime",
+  "references": [
+    "NiumaCore.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": []
+}
