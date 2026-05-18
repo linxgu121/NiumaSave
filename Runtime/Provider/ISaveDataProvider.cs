@@ -28,6 +28,7 @@ namespace NiumaSave.Provider
         /// <summary>
         /// 导出模块存档段。
         /// 实现层必须显式字段映射，不要直接序列化运行时对象或 Unity 对象引用。
+        /// SaveDataProviderRegistry 会捕获实现层抛出的异常并转为结构化导出失败；直接调用该方法的代码必须自行处理异常。
         /// </summary>
         SaveSectionData ExportSection();
 

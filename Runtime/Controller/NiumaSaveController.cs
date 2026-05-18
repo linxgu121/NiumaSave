@@ -79,6 +79,11 @@ namespace NiumaSave.Controller
             StopModule();
         }
 
+        private void OnDestroy()
+        {
+            // TODO: SaveController 销毁时由 NiumaSave 统一清空 ProviderRegistry，避免各模块 Adapter 在 saveController 已销毁时各自处理残留注册。
+        }
+
         private void Update()
         {
             if (_isRunning)

@@ -115,6 +115,7 @@ namespace NiumaSave.Service
                 return SaveGameImportResult.Fail(checksumResult.Message);
             }
 
+            var importedProviders = new List<ISaveDataProvider>(document.Sections.Length);
             for (var i = 0; i < document.Sections.Length; i++)
             {
                 var section = document.Sections[i];
@@ -127,6 +128,42 @@ namespace NiumaSave.Service
                 if (!importResult.Succeeded)
                 {
                     return SaveGameImportResult.Fail($"导入 SectionId={section.SectionId} 失败：{importResult.Message}");
+                }
+                importedProviders.Add(provider);
+            }
+
+            return RunPostImportHooks(importedProviders);
+        }
+
+        private static SaveGameImportResult RunPostImportHooks(IReadOnlyList<ISaveDataProvider> importedProviders)
+        {
+            if (importedProviders == null || importedProviders.Count == 0)
+            {
+                return SaveGameImportResult.Success();
+            }
+
+            for (var i = 0; i < importedProviders.Count; i++)
+            {
+                if (importedProviders[i] is not ISavePostImportHook hook)
+                {
+                    continue;
+                }
+
+                SaveSectionImportResult hookResult;
+                try
+                {
+                    hookResult = hook.OnAllSectionsImported();
+                }
+                catch (Exception ex)
+                {
+                    return SaveGameImportResult.Fail(
+                        $"SectionId={importedProviders[i].SectionId} 的导入后处理发生异常：{ex.Message}");
+                }
+
+                if (!hookResult.Succeeded)
+                {
+                    return SaveGameImportResult.Fail(
+                        $"SectionId={importedProviders[i].SectionId} 的导入后处理失败：{hookResult.Message}");
                 }
             }
 
