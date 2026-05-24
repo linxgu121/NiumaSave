@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NiumaCore.Module;
@@ -59,6 +60,30 @@ namespace NiumaSave.Controller
         public SaveGameCoordinator Coordinator => _coordinator;
         public ISaveSlotPolicy SlotPolicy => _slotPolicy;
         public SaveManualSlotSelection LastManualSlotSelection { get; private set; }
+
+        /// <summary>
+        /// 当前缓存的存档槽列表。
+        /// UI 桥接层可读取该列表做显示；需要主动刷新磁盘时请调用 RefreshSlotListAsync。
+        /// </summary>
+        public IReadOnlyList<SaveSlotMetadata> CachedSlots => _slotRegistry != null
+            ? _slotRegistry.CachedSlots
+            : Array.Empty<SaveSlotMetadata>();
+
+        /// <summary>
+        /// 当前读写会话正在使用的存档槽 ID。
+        /// </summary>
+        public string ActiveSlotId => _activeSlotId;
+
+        /// <summary>
+        /// 默认自动存档槽 ID。
+        /// </summary>
+        public string DefaultSlotId => defaultSlotId;
+
+        /// <summary>
+        /// 存档模块表现数据修订号。
+        /// 保存、读取、删除、脏标记变化后递增，供 UI 桥接层判断是否需要刷新。
+        /// </summary>
+        public int SaveRevision { get; private set; }
 
         private void Awake()
         {
@@ -172,6 +197,7 @@ namespace NiumaSave.Controller
                 ResetSessionClock(resolvedSlotId, metadata.PlayTimeSeconds);
                 _dirtyTracker.CaptureProviderBaseline(_providerRegistry);
                 await _slotRegistry.RefreshAsync(cancellationToken);
+                BumpSaveRevision();
             }
 
             return saveResult;
@@ -240,6 +266,7 @@ namespace NiumaSave.Controller
                     metadata != null ? metadata.PlayTimeSeconds : 0d);
                 _dirtyTracker.CaptureProviderBaseline(_providerRegistry);
                 await _slotRegistry.RefreshAsync(cancellationToken);
+                BumpSaveRevision();
             }
 
             return importResult;
@@ -261,6 +288,8 @@ namespace NiumaSave.Controller
                     {
                         ResetSessionClock(defaultSlotId, 0d);
                     }
+
+                    BumpSaveRevision();
                 }
 
                 return deleted;
@@ -270,6 +299,27 @@ namespace NiumaSave.Controller
                 UnityEngine.Debug.LogWarning($"[NiumaSaveController] 删除存档槽失败：SlotId={resolvedSlotId}, Error={ex.Message}", this);
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 刷新本地存档槽列表。
+        /// UI 桥接层应通过该方法拉取最新磁盘状态，而不是直接访问本地文件服务。
+        /// </summary>
+        public async Task<IReadOnlyList<SaveSlotMetadata>> RefreshSlotListAsync(CancellationToken cancellationToken = default)
+        {
+            EnsureServices();
+            return await _slotRegistry.RefreshAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// 查询指定存档槽是否存在未保存变更。
+        /// </summary>
+        public Task<bool> IsSlotDirtyAsync(string slotId = null, CancellationToken cancellationToken = default)
+        {
+            EnsureServices();
+            return _saveService != null
+                ? _saveService.IsDirtyAsync(ResolveSlotId(slotId), cancellationToken)
+                : Task.FromResult(false);
         }
 
         private void EnsureServices(bool rebuildSaveService = true)
@@ -375,6 +425,7 @@ namespace NiumaSave.Controller
             {
                 await _dirtyTracker.MarkDirtyAsync(defaultSlotId);
                 _dirtyTracker.CaptureProviderBaseline(_providerRegistry);
+                BumpSaveRevision();
             }
             catch (Exception ex)
             {
@@ -384,6 +435,11 @@ namespace NiumaSave.Controller
             {
                 _isMarkingDirty = false;
             }
+        }
+
+        private void BumpSaveRevision()
+        {
+            SaveRevision = SaveRevision == int.MaxValue ? 1 : SaveRevision + 1;
         }
     }
 }
