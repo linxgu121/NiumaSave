@@ -23,7 +23,7 @@ namespace NiumaSave.Provider
         /// 模块运行时数据修订号。
         /// NiumaSave 可以用它轻量判断模块是否发生变化，而不是每帧导出完整快照。
         /// </summary>
-        int Revision { get; }
+        long Revision { get; }
 
         /// <summary>
         /// 导出模块存档段。

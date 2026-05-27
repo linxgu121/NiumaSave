@@ -18,7 +18,7 @@ namespace NiumaSave.Dirty
         private const string DirtyFileExtension = ".flag";
 
         private readonly string _dirtyDirectory;
-        private readonly Dictionary<string, int> _providerRevisionBaseline = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> _providerRevisionBaseline = new(StringComparer.Ordinal);
 
         public SaveDirtyTracker()
             : this(Path.Combine(Application.persistentDataPath, "NiumaSave", DirtyDirectoryName))
