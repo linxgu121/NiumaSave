@@ -19,7 +19,7 @@ namespace NiumaSave.Bridge
         [Tooltip("存档模块根控制器。请拖入场景中的 NiumaSaveController；为空时可按配置自动查找。")]
         [SerializeField] private NiumaSaveController saveController;
 
-        [Tooltip("实现 ISaveUIReceiver 的 UI 组件。桥接层会把整理后的存档表现数据交给它显示。")]
+        [Tooltip("存档面板 UI 脚本。拖团队制作的 Save 面板脚本；该脚本负责显示槽位、保存/读取按钮和错误提示。当前模块未内置正式面板，未制作 UI 时可留空。")]
         [SerializeField] private MonoBehaviour saveUIReceiverProvider;
 
         [Header("自动查找")]
@@ -581,7 +581,7 @@ namespace NiumaSave.Bridge
             var receiver = saveUIReceiverProvider as ISaveUIReceiver;
             if (receiver == null && logWarnings && logMissing && saveUIReceiverProvider != null)
             {
-                UnityEngine.Debug.LogWarning("[NiumaSaveUIBridge] Save UI Receiver Provider 没有实现 ISaveUIReceiver。", this);
+                UnityEngine.Debug.LogWarning("[NiumaSaveUIBridge] Save UI Receiver 绑定的不是存档面板脚本，请拖团队制作的 Save 面板脚本。", this);
             }
 
             return receiver;

@@ -1,7 +1,7 @@
 ﻿# NiumaSave
 
 ## 模块定位
-NiumaSave 是统一存档模块，负责收集各模块 ISaveDataProvider 快照，组装 SaveGameDocument，序列化、校验、写入本地文件，并预留云同步策略。
+NiumaSave 是统一存档模块，负责收集各模块 SaveAdapter 提供的快照，组装 SaveGameDocument，序列化、校验、写入本地文件，并预留云同步策略。
 
 ## 框架设计思路
 - 各模块只导出自己的 Section，不知道完整存档文件结构。
@@ -18,7 +18,7 @@ NiumaSave 是统一存档模块，负责收集各模块 ISaveDataProvider 快照
 6. Load 时反序列化 Document，再逐个 Provider 导入 Section，必要时执行 PostImportHook。
 
 ## 模块用法
-- 新模块接入存档时实现 ISaveDataProvider。
+- 新模块接入存档时，优先挂该模块提供的 SaveAdapter 脚本，例如 `NiumaInventorySaveAdapter`、`NiumaQuestSaveAdapter`、`NiumaGalSaveAdapter`。如果是新写模块，再由程序新增对应 SaveAdapter。
 - 导出失败应抛清晰异常或返回结构化失败，调用方负责整批存档容错。
 - 临时运行态不要写入 Section，如临时容器、瞬时 SFX、播放中 UI。
 
