@@ -36,4 +36,36 @@ NiumaSave 是统一存档模块，负责收集各模块 SaveAdapter 提供的快
 ## 协作边界
 NiumaSave 不理解任务、背包、装备的业务含义，只保存它们提供的快照。云同步冲突协调放在更高层策略，不让本地文件服务感知服务器状态。
 
+## 场景挂载与 Inspector 配置
+### NiumaSaveController
+建议挂载位置：`CoreScene/BootstrapRoot/SaveRoot`。
+
+用途：统一收集各模块 SaveAdapter，组装 SaveGameDocument，写入本地存档，并提供自动、检查点、手动槽位策略。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Local Save Root Directory` | 通常留空 | 可以 | 留空时使用 `Application.persistentDataPath/NiumaSave` |
+| `User Id` | 单机可填 `local_user` | 不建议 | 为空时可能使用默认用户，后续云同步不清晰 |
+| `Auto Save Interval Seconds` | 按需求设置 | 可以为 0 | 为 0 或关闭自动保存时不会定时存档 |
+| `Provider Registry` | 通常由 Controller 内部维护 | 可以 | SaveAdapter 注册后才有 Provider |
+| `Slot Policy` | 默认策略即可 | 可以 | 没有特殊策略时使用默认槽位规则 |
+
+### 各模块 SaveAdapter
+建议挂载位置：`CoreScene/BootstrapRoot/SaveRoot/SaveAdapters`。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Module Controller` | 拖对应模块 Controller | 不建议 | 该模块不会导出/导入存档 |
+| `Save Controller` | 拖 `NiumaSaveController` | 不建议 | 无法注册到 ProviderRegistry |
+| `Auto Find References` | 测试可开，正式建议手动绑定 | 可以 | 关闭且未绑定时适配器不工作 |
+
+### SaveUIViewBridge
+建议挂载位置：存档列表 UI 面板。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Save Controller` | 拖 `NiumaSaveController` | 不建议 | UI 无法显示槽位 |
+| `Receiver Provider` | 拖存档 UI 接收脚本 | 不可以 | 存档列表无处显示 |
+| `Selected Slot Id` | 默认选中槽位 | 可以 | 留空时桥接层尝试选第一个槽位 |
+
 
