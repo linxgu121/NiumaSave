@@ -4,36 +4,30 @@ using UnityEngine;
 namespace NiumaSave.Bridge
 {
     /// <summary>
-    /// 存档 UI Toolkit 接收器。
-    /// 挂在 UIRoot/UIBridges 下，并拖给 SaveUIViewBridge 的 Save UI Receiver Provider。
+    /// 存档 UI Toolkit 接收器。挂在 UIRoot/UIBridges 下，并拖给 SaveUIViewBridge 的 Save UI Receiver Provider。
     /// </summary>
     public sealed class SaveToolkitReceiver : MonoBehaviour, ISaveUIReceiver
     {
         [Header("Toolkit")]
         [Tooltip("UI Toolkit 根控制器。拖核心场景 UIRoot/UIManager 上的 UIToolkitUIManager。")]
         [SerializeField] private UIToolkitUIManager uiManager;
-
         [Tooltip("存档面板 ViewId。需要在 UIToolkitViewRegistrySO 中注册同名 View。")]
         [SerializeField] private string saveViewId = "SavePanel";
-
         [Tooltip("收到存档刷新或操作结果时，如果窗口尚未打开，是否自动打开。")]
         [SerializeField] private bool autoOpenView = true;
-
-        [Tooltip("收到 Cleared 更新时是否关闭存档窗口。")]
+        [Tooltip("收到 Cleared 更新时是否关闭存档窗口。开启后会关闭并停止刷新，避免关闭后又被自动打开。")]
         [SerializeField] private bool closeOnCleared = true;
-
         [Header("调试")]
         [Tooltip("缺少 UIManager 或 ViewId 未注册时是否输出警告。")]
         [SerializeField] private bool logWarnings = true;
 
         public void ApplySaveUpdate(SaveUIUpdate update)
         {
-            if (update.UpdateType == SaveUIUpdateType.Cleared)
-            {
-                if (closeOnCleared && uiManager != null)
-                    uiManager.CloseView(saveViewId);
 
-                RefreshOrOpen(update);
+            if (update.UpdateType == SaveUIUpdateType.Cleared && closeOnCleared)
+            {
+                if (uiManager != null)
+                    uiManager.CloseView(saveViewId);
                 return;
             }
 

@@ -1,87 +1,274 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using NiumaUI.Toolkit;
+using NiumaUI.Toolkit.Common;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UIElements;
 
 namespace NiumaSave.Bridge
 {
-    public sealed class SaveToolkitBindingProvider : MonoBehaviour, IToolkitViewBindingProvider
+    public sealed class SaveToolkitBindingProvider : ToolkitViewBindingProviderBase
     {
-        [SerializeField, Tooltip("BindingProviderId，默认 SavePanel。需要和 UIToolkitViewRegistrySO 存档 View 的 BindingProviderId 一致。")] private string providerId = "SavePanel";
-        [SerializeField] private string titleLabelName = "TitleText";
-        [SerializeField] private string statusLabelName = "StatusText";
-        [SerializeField] private string listRootName = "ListRoot";
-        [SerializeField] private string detailLabelName = "DetailText";
-        [SerializeField] private string resultLabelName = "ResultText";
-        [SerializeField] private string emptyRootName = "EmptyRoot";
-        [SerializeField] private int maxRows = 40;
-        [SerializeField] private string rowClass = "niuma-save-row";
+        [Serializable] public sealed class SaveSlotEvent : UnityEvent<string> { }
 
-        public string ProviderId => string.IsNullOrWhiteSpace(providerId) ? "SavePanel" : providerId.Trim();
-        public IToolkitViewBinding CreateBinding() => new SaveToolkitBinding(titleLabelName, statusLabelName, listRootName, detailLabelName, resultLabelName, emptyRootName, maxRows, rowClass);
+        [Header("元素名称")]
+        [SerializeField, Tooltip("标题 Label 的 name。默认 TitleText。")]
+        private string titleLabelName = "TitleText";
+        [SerializeField, Tooltip("状态 Label 的 name。默认 StatusText。")]
+        private string statusLabelName = "StatusText";
+        [SerializeField, Tooltip("存档槽列表 ListView 的 name。默认 ListRoot。")]
+        private string listViewName = "ListRoot";
+        [SerializeField, Tooltip("详情 Label 的 name。显示当前选中槽位。")]
+        private string detailLabelName = "DetailText";
+        [SerializeField, Tooltip("结果 Label 的 name。显示最近保存/读取/删除结果。")]
+        private string resultLabelName = "ResultText";
+        [SerializeField, Tooltip("空状态节点的 name。没有槽位时显示。")]
+        private string emptyRootName = "EmptyRoot";
+
+        [Header("按钮名称")]
+        [SerializeField, Tooltip("保存按钮 name。点击时把当前选中 SlotId 传给 On Save Requested。")]
+        private string saveButtonName = "SaveButton";
+        [SerializeField, Tooltip("读取按钮 name。点击时把当前选中 SlotId 传给 On Load Requested。")]
+        private string loadButtonName = "LoadButton";
+        [SerializeField, Tooltip("删除按钮 name。点击时把当前选中 SlotId 传给 On Delete Requested。")]
+        private string deleteButtonName = "DeleteButton";
+
+        [Header("列表")]
+        [SerializeField, Tooltip("最多显示多少个槽位。")]
+        private int maxRows = 40;
+        [SerializeField, Tooltip("列表行 USS class。")]
+        private string rowClass = "niuma-save-row";
+        [SerializeField, Tooltip("选中行 USS class。")]
+        private string selectedRowClass = "is-selected";
+        [SerializeField, Tooltip("禁用行 USS class。")]
+        private string disabledRowClass = "is-disabled";
+
+        [Header("交互事件")]
+        [SerializeField, Tooltip("点击槽位行时触发。参数为 SlotId。")]
+        private SaveSlotEvent onSlotSelected = new SaveSlotEvent();
+        [SerializeField, Tooltip("点击 SaveButton 时触发。参数为 SlotId。")]
+        private SaveSlotEvent onSaveRequested = new SaveSlotEvent();
+        [SerializeField, Tooltip("点击 LoadButton 时触发。参数为 SlotId。")]
+        private SaveSlotEvent onLoadRequested = new SaveSlotEvent();
+        [SerializeField, Tooltip("点击 DeleteButton 时触发。参数为 SlotId。")]
+        private SaveSlotEvent onDeleteRequested = new SaveSlotEvent();
+
+        protected override string DefaultProviderId => "SavePanel";
+
+        public override IToolkitViewBinding CreateBinding()
+        {
+            return new SaveToolkitBinding(
+                titleLabelName,
+                statusLabelName,
+                listViewName,
+                detailLabelName,
+                resultLabelName,
+                emptyRootName,
+                saveButtonName,
+                loadButtonName,
+                deleteButtonName,
+                maxRows,
+                rowClass,
+                selectedRowClass,
+                disabledRowClass,
+                id => onSlotSelected?.Invoke(id),
+                id => onSaveRequested?.Invoke(id),
+                id => onLoadRequested?.Invoke(id),
+                id => onDeleteRequested?.Invoke(id));
+        }
     }
 
-    public sealed class SaveToolkitBinding : ToolkitViewBindingBase
+    public sealed class SaveToolkitViewModel : UIPanelViewModelBase
     {
-        private readonly string _titleName, _statusName, _listName, _detailName, _resultName, _emptyName, _rowClass;
-        private readonly int _maxRows;
-        private Label _title, _status, _detail, _result;
-        private VisualElement _list, _empty;
+        public readonly List<ToolkitTextRowData> Rows = new List<ToolkitTextRowData>();
+        public SavePanelViewData Panel { get; private set; }
+        public SaveUIUpdateType UpdateType { get; private set; }
+        public int Revision { get; private set; }
+        public string SelectedSlotId { get; private set; }
+        public int PageIndex { get; private set; }
+        public string SearchKeyword { get; private set; }
 
-        public SaveToolkitBinding(string titleName, string statusName, string listName, string detailName, string resultName, string emptyName, int maxRows, string rowClass)
+        public void Apply(SaveUIUpdate update, int maxRows)
         {
-            _titleName = titleName; _statusName = statusName; _listName = listName; _detailName = detailName; _resultName = resultName; _emptyName = emptyName;
-            _maxRows = Mathf.Max(1, maxRows);
-            _rowClass = string.IsNullOrWhiteSpace(rowClass) ? "niuma-save-row" : rowClass.Trim();
+            Panel = update.PanelData;
+            UpdateType = update.UpdateType;
+            Revision = update.Revision;
+            SetContext(Panel?.ActiveSlotId);
+            SelectedSlotId = NormalizeSelection(Panel, SelectedSlotId);
+            RebuildRows(maxRows);
+            MarkDirty();
         }
 
-        protected override void OnInitialize()
+        public void Select(string slotId)
         {
-            _title = QL(_titleName); _status = QL(_statusName); _list = QE(_listName); _detail = QL(_detailName); _result = QL(_resultName); _empty = QE(_emptyName);
-            Apply(null, SaveUIUpdateType.Cleared, 0);
+            SelectedSlotId = string.IsNullOrWhiteSpace(slotId) ? null : slotId.Trim();
+            RebuildRows(int.MaxValue);
+            MarkDirty();
         }
 
-        protected override void OnRefresh(object viewData)
+        protected override void OnClear(UIViewModelClearReason reason)
         {
-            if (viewData is SaveUIUpdate update) Apply(update.PanelData, update.UpdateType, update.Revision);
-            else Apply(null, SaveUIUpdateType.Cleared, 0);
+            Panel = null;
+            UpdateType = SaveUIUpdateType.Cleared;
+            Revision = 0;
+            SelectedSlotId = null;
+            PageIndex = 0;
+            SearchKeyword = string.Empty;
+            Rows.Clear();
         }
 
-        protected override void OnClose() => Apply(null, SaveUIUpdateType.Cleared, 0);
-
-        private void Apply(SavePanelViewData panel, SaveUIUpdateType updateType, int revision)
+        private void RebuildRows(int maxRows)
         {
-            Set(_title, "存档");
-            Clear();
-            var slots = panel?.Slots ?? Array.Empty<SaveSlotViewData>();
-            SetVisible(_empty, panel == null || slots.Length == 0);
-            Set(_status, panel == null ? $"状态：{updateType}" : $"Revision {panel.Revision} | 槽位 {slots.Length} | 当前 {Text(panel.ActiveSlotId, "无")}");
-
-            if (panel == null)
-            {
-                Set(_detail, "暂无存档数据。");
-                Set(_result, string.Empty);
-                return;
-            }
-
-            Set(_detail, SlotDetail(panel.SelectedSlot));
-            Set(_result, string.IsNullOrWhiteSpace(panel.LastOperationName) ? string.Empty : $"{panel.LastOperationName}：{(panel.LastOperationSucceeded ? "成功" : "失败")} {panel.LastOperationMessage}");
-
-            for (var i = 0; i < slots.Length && i < _maxRows; i++)
+            Rows.Clear();
+            var slots = Panel?.Slots ?? Array.Empty<SaveSlotViewData>();
+            var limit = Math.Max(1, maxRows);
+            for (var i = 0; i < slots.Length && i < limit; i++)
             {
                 var slot = slots[i];
-                if (slot == null) continue;
-                Add($"{(slot.IsSelected ? "> " : string.Empty)}{Text(slot.DisplayName, slot.SlotId)} | {slot.SlotKind} | Rev {slot.Revision} | {slot.UpdatedAtText} | {slot.PlayTimeText}{(slot.IsDirty ? " | 脏" : string.Empty)}");
+                if (slot == null)
+                    continue;
+
+                var id = string.IsNullOrWhiteSpace(slot.SlotId) ? $"slot:{i}" : slot.SlotId;
+                var selected = slot.IsSelected || string.Equals(SelectedSlotId, id, StringComparison.Ordinal);
+                Rows.Add(new ToolkitTextRowData(id, $"{(selected ? "> " : string.Empty)}{Text(slot.DisplayName, slot.SlotId)} | {slot.SlotKind} | Rev {slot.Revision} | {slot.UpdatedAtText} | {slot.PlayTimeText}{(slot.IsDirty ? " | 脏" : string.Empty)}", selected));
             }
         }
 
-        private static string SlotDetail(SaveSlotViewData slot) => slot == null ? "未选择存档槽。" : $"选中：{Text(slot.DisplayName, slot.SlotId)}\nSlotId：{slot.SlotId}\n类型：{slot.SlotKind}\nRevision：{slot.Revision}\n更新时间：{slot.UpdatedAtText}\n游玩时间：{slot.PlayTimeText}";
-        private Label QL(string name) => string.IsNullOrWhiteSpace(name) ? null : Query<Label>(name.Trim());
-        private VisualElement QE(string name) => string.IsNullOrWhiteSpace(name) ? null : Root?.Q<VisualElement>(name.Trim());
-        private void Clear() { if (_list != null) _list.Clear(); }
-        private void Add(string text) { if (_list == null) return; var row = new Label(text ?? string.Empty); row.AddToClassList(_rowClass); _list.Add(row); }
-        private static void Set(Label label, string text) { if (label != null) label.text = text ?? string.Empty; }
-        private static void SetVisible(VisualElement element, bool visible) { if (element != null) element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None; }
-        private static string Text(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback ?? string.Empty : value;
+        private static string NormalizeSelection(SavePanelViewData panel, string previous)
+        {
+            if (!string.IsNullOrWhiteSpace(panel?.SelectedSlot?.SlotId))
+                return panel.SelectedSlot.SlotId.Trim();
+            if (!string.IsNullOrWhiteSpace(panel?.ActiveSlotId))
+                return panel.ActiveSlotId.Trim();
+            if (!string.IsNullOrWhiteSpace(previous))
+                return previous.Trim();
+            return null;
+        }
+
+        private static string Text(string value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value) ? fallback ?? string.Empty : value;
+        }
+    }
+
+    public sealed class SaveToolkitBinding : ToolkitViewBindingBase<SaveUIUpdate, SaveToolkitViewModel>
+    {
+        private readonly string _titleName;
+        private readonly string _statusName;
+        private readonly string _listName;
+        private readonly string _detailName;
+        private readonly string _resultName;
+        private readonly string _emptyName;
+        private readonly string _saveButtonName;
+        private readonly string _loadButtonName;
+        private readonly string _deleteButtonName;
+        private readonly int _maxRows;
+        private readonly string _rowClass;
+        private readonly string _selectedClass;
+        private readonly string _disabledClass;
+        private readonly Action<string> _slotSelected;
+        private readonly Action<string> _saveRequested;
+        private readonly Action<string> _loadRequested;
+        private readonly Action<string> _deleteRequested;
+        private readonly ToolkitListBinding<ToolkitTextRowData> _listBinding = new ToolkitListBinding<ToolkitTextRowData>();
+        private Label _title;
+        private Label _status;
+        private Label _detail;
+        private Label _result;
+
+        public SaveToolkitBinding(string titleName, string statusName, string listName, string detailName, string resultName, string emptyName, string saveButtonName, string loadButtonName, string deleteButtonName, int maxRows, string rowClass, string selectedClass, string disabledClass, Action<string> slotSelected, Action<string> saveRequested, Action<string> loadRequested, Action<string> deleteRequested)
+        {
+            _titleName = titleName;
+            _statusName = statusName;
+            _listName = listName;
+            _detailName = detailName;
+            _resultName = resultName;
+            _emptyName = emptyName;
+            _saveButtonName = saveButtonName;
+            _loadButtonName = loadButtonName;
+            _deleteButtonName = deleteButtonName;
+            _maxRows = Mathf.Max(1, maxRows);
+            _rowClass = string.IsNullOrWhiteSpace(rowClass) ? "niuma-save-row" : rowClass.Trim();
+            _selectedClass = selectedClass;
+            _disabledClass = disabledClass;
+            _slotSelected = slotSelected;
+            _saveRequested = saveRequested;
+            _loadRequested = loadRequested;
+            _deleteRequested = deleteRequested;
+        }
+
+        protected override void OnInitializeTyped()
+        {
+            _title = QLabel(_titleName);
+            _status = QLabel(_statusName);
+            _detail = QLabel(_detailName);
+            _result = QLabel(_resultName);
+            _listBinding.Bind(Root, _listName, new ToolkitTextRowItemBinder(_rowClass, _selectedClass, _disabledClass, HandleRowClicked), _emptyName);
+            Callbacks.RegisterButton(Root, _saveButtonName, () => InvokeSelected(_saveRequested), HasSelection);
+            Callbacks.RegisterButton(Root, _loadButtonName, () => InvokeSelected(_loadRequested), HasSelection);
+            Callbacks.RegisterButton(Root, _deleteButtonName, () => InvokeSelected(_deleteRequested), HasSelection);
+            ApplyVisualState(ViewModel);
+        }
+
+        protected override void OnRefreshTyped(SaveUIUpdate viewData, SaveToolkitViewModel viewModel)
+        {
+            viewModel.Apply(viewData, _maxRows);
+            ApplyVisualState(viewModel);
+        }
+
+        protected override void OnClearTyped(UIViewModelClearReason reason)
+        {
+            _listBinding.Clear();
+            ApplyVisualState(ViewModel);
+        }
+
+        protected override void OnDisposeTyped()
+        {
+            _listBinding.Dispose();
+        }
+
+        private void HandleRowClicked(ToolkitTextRowData row)
+        {
+            if (row == null)
+                return;
+
+            ViewModel.Select(row.Id);
+            _slotSelected?.Invoke(row.Id);
+            ApplyVisualState(ViewModel);
+        }
+
+        private void ApplyVisualState(SaveToolkitViewModel viewModel)
+        {
+            SetText(_title, "??");
+            _listBinding.ReplaceAll(viewModel != null ? viewModel.Rows : Array.Empty<ToolkitTextRowData>());
+            var panel = viewModel?.Panel;
+            var slots = panel?.Slots ?? Array.Empty<SaveSlotViewData>();
+            var updateType = viewModel != null ? viewModel.UpdateType : SaveUIUpdateType.Cleared;
+            SetText(_status, panel == null ? $"???{updateType}" : $"Revision {panel.Revision} | ?? {slots.Length} | ?? {Text(panel.ActiveSlotId, "?")}");
+            SetText(_detail, SlotDetail(panel?.SelectedSlot));
+            SetText(_result, panel == null || string.IsNullOrWhiteSpace(panel.LastOperationName) ? string.Empty : $"{panel.LastOperationName}?{(panel.LastOperationSucceeded ? "??" : "??")} {panel.LastOperationMessage}");
+        }
+
+        private bool HasSelection()
+        {
+            return !string.IsNullOrWhiteSpace(ViewModel?.SelectedSlotId);
+        }
+
+        private void InvokeSelected(Action<string> action)
+        {
+            if (HasSelection())
+                action?.Invoke(ViewModel.SelectedSlotId);
+        }
+
+        private static string SlotDetail(SaveSlotViewData slot)
+        {
+            return slot == null ? "未选择存档槽。" : $"选中：{Text(slot.DisplayName, slot.SlotId)}\nSlotId：{slot.SlotId}\n类型：{slot.SlotKind}\nRevision：{slot.Revision}\n更新时间：{slot.UpdatedAtText}\n游玩时间：{slot.PlayTimeText}";
+        }
+
+        private static string Text(string value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value) ? fallback ?? string.Empty : value;
+        }
     }
 }
